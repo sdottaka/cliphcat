@@ -142,12 +142,6 @@ static void ReplaceWhitespaceWithSpace(std::basic_string<CharT>& str)
 	}
 }
 
-static void TrimTrailingNulls(std::string& str)
-{
-	while (!str.empty() && str.back() == '\0')
-		str.pop_back();
-}
-
 static void TrimTrailingNulls(const char* buf, size_t& size)
 {
 	while (size && buf[size - 1] == '\0')
@@ -749,10 +743,32 @@ struct Options
 	bool raw = false;
 	bool listMode = false;
 	bool clearMode = false;
+	bool showHelp = false;
 	std::string indexStr = "1";
 };
 
-static int ParseArguments(int argc, char* argv[], Options& opts)
+struct ParseResult
+{
+	int exitCode;
+	std::string errorMessage;
+};
+
+static const char* HELP_TEXT =
+	"cliphcat [options] [index|alias|url]\n\n"
+	"Arguments:\n"
+	"  1, latest\tCurrent clipboard (default)\n"
+	"  2, previous  Previous clipboard history item\n"
+	"  N\t\tHistory item N (1=latest)\n"
+	"  clip://N\t URL scheme (clipboard://, clip://)\n\n"
+	"Options:\n"
+	"  -o, --output <file>   Output to file instead of stdout\n"
+	"  -f, --format <type>   text | html | rtf | png\n"
+	"  --raw\t\t\t Output raw clipboard data\n"
+	"  -l, --list\t\tList clipboard history\n"
+	"  -C, --clear\t\tClear clipboard history\n"
+	"  -h, --help\t\tShow this help\n";
+
+static ParseResult ParseArguments(int argc, char* argv[], Options& opts)
 {
 	bool indexSet = false;
 
@@ -762,25 +778,16 @@ static int ParseArguments(int argc, char* argv[], Options& opts)
 		if (arg == "-o" || arg == "--output")
 		{
 			if (i + 1 >= argc)
-			{
-				err("Missing value for -o.");
-				return EXIT_INVALID_ARGS;
-			}
+				return { EXIT_INVALID_ARGS, "Missing value for -o." };
 			opts.outFile = argv[++i];
 		}
 		else if (arg == "-f" || arg == "--format")
 		{
 			if (i + 1 >= argc)
-			{
-				err("Missing value for -f.");
-				return EXIT_INVALID_ARGS;
-			}
+				return { EXIT_INVALID_ARGS, "Missing value for -f." };
 			opts.fmt = ParseFormat(argv[++i]);
 			if (opts.fmt == FMT_AUTO)
-			{
-				err("Invalid format. Use: text, html, rtf, png");
-				return EXIT_INVALID_ARGS;
-			}
+				return { EXIT_INVALID_ARGS, "Invalid format. Use: text, html, rtf, png" };
 		}
 		else if (arg == "--raw")
 		{
@@ -796,21 +803,8 @@ static int ParseArguments(int argc, char* argv[], Options& opts)
 		}
 		else if (arg == "-h" || arg == "--help")
 		{
-			fprintf(stdout,
-				"cliphcat [options] [index|alias|url]\n\n"
-				"Arguments:\n"
-				"  1, latest	Current clipboard (default)\n"
-				"  2, previous  Previous clipboard history item\n"
-				"  N			History item N (1=latest)\n"
-				"  clip://N	 URL scheme (clipboard://, clip://)\n\n"
-				"Options:\n"
-				"  -o, --output <file>   Output to file instead of stdout\n"
-				"  -f, --format <type>   text | html | rtf | png\n"
-				"  --raw				 Output raw clipboard data\n"
-				"  -l, --list			List clipboard history\n"
-				"  -C, --clear			Clear clipboard history\n"
-				"  -h, --help			Show this help\n");
-			return EXIT_OK;
+			opts.showHelp = true;
+			return { EXIT_OK, nullptr };
 		}
 		else if (arg[0] != '-')
 		{
@@ -820,19 +814,15 @@ static int ParseArguments(int argc, char* argv[], Options& opts)
 				indexSet = true;
 			}
 			else
-			{
-				err("Unexpected extra argument.");
-				return EXIT_INVALID_ARGS;
-			}
+				return { EXIT_INVALID_ARGS, "Unexpected extra argument." };
 		}
 		else
 		{
-			err(("Unknown option: " + arg).c_str());
-			return EXIT_INVALID_ARGS;
+			return { EXIT_INVALID_ARGS, ("Unknown option: " + arg).c_str() };
 		}
 	}
 
-	return -1; // Continue processing
+	return { -1, nullptr }; // Continue processing
 }
 
 int main(int argc, char* argv[])
@@ -844,9 +834,15 @@ int main(int argc, char* argv[])
 	RegisterFormats();
 
 	Options opts;
-	int parseResult = ParseArguments(argc, argv, opts);
-	if (parseResult >= 0)
-		return parseResult;
+	ParseResult parseResult = ParseArguments(argc, argv, opts);
+	if (parseResult.exitCode >= 0)
+	{
+		if (!parseResult.errorMessage.empty())
+			err(parseResult.errorMessage.c_str());
+		else if (opts.showHelp)
+			fprintf(stdout, "%s", HELP_TEXT);
+		return parseResult.exitCode;
+	}
 
 	if (opts.listMode)
 	{
