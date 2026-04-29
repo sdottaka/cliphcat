@@ -26,8 +26,8 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
-#include <regex>
 #include <algorithm>
+#include <cctype>
 
 #pragma comment(lib, "windowscodecs.lib")
 
@@ -656,17 +656,63 @@ struct ParsedUrl
 	FormatType fmt = FMT_AUTO;
 };
 
+static bool StartsWithIgnoreCase(const std::string& str, const char* prefix, size_t prefixLen)
+{
+	if (str.size() < prefixLen)
+		return false;
+	for (size_t i = 0; i < prefixLen; ++i)
+	{
+		if (std::tolower((unsigned char)str[i]) != std::tolower((unsigned char)prefix[i]))
+			return false;
+	}
+	return true;
+}
+
 static ParsedUrl ParseClipUrl(const std::string& url)
 {
 	ParsedUrl r;
-	std::regex re(R"((?:clip|clipboard)://([^?]+)(?:\?format=(\w+))?)", std::regex::icase);
-	std::smatch m;
-	if (!std::regex_match(url, m, re))
+
+	// Check scheme: clip:// or clipboard://
+	size_t pos = 0;
+	if (StartsWithIgnoreCase(url, "clip://", 7))
+		pos = 7;
+	else if (StartsWithIgnoreCase(url, "clipboard://", 12))
+		pos = 12;
+	else
 		return r;
+
+	// Find query (?) and fragment (#)
+	size_t queryPos = url.find('?', pos);
+	size_t fragPos = url.find('#', pos);
+
+	// Extract index
+	size_t indexEnd = std::string::npos;
+	if (queryPos != std::string::npos && fragPos != std::string::npos)
+		indexEnd = std::min(queryPos, fragPos);
+	else if (queryPos != std::string::npos)
+		indexEnd = queryPos;
+	else if (fragPos != std::string::npos)
+		indexEnd = fragPos;
+	else
+		indexEnd = url.size();
+
+	if (indexEnd == pos)
+		return r;
+
+	r.indexStr = url.substr(pos, indexEnd - pos);
+
+	// Extract format if present
+	if (queryPos != std::string::npos && queryPos < url.size() - 1)
+	{
+		size_t formatStart = queryPos + 1;
+		size_t formatEnd = (fragPos != std::string::npos) ? fragPos : url.size();
+		std::string query = url.substr(formatStart, formatEnd - formatStart);
+
+		if (StartsWithIgnoreCase(query, "format=", 7))
+			r.fmt = ParseFormat(query.substr(7));
+	}
+
 	r.valid = true;
-	r.indexStr = m[1].str();
-	if (m[2].matched)
-		r.fmt = ParseFormat(m[2].str());
 	return r;
 }
 
