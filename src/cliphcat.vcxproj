@@ -258,8 +258,8 @@
     <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\cliphcat.cpp" />
-    <ClCompile Include="src\WinRtLoader.cpp" />
+    <ClCompile Include="cliphcat.cpp" />
+    <ClCompile Include="WinRtLoader.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
