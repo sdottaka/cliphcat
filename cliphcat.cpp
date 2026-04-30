@@ -16,6 +16,7 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.Graphics.Imaging.h>
 
 #pragma comment(lib, "runtimeobject.lib")
 #else
@@ -35,6 +36,8 @@
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::ApplicationModel::DataTransfer;
 using namespace winrt::Windows::Storage::Streams;
+using namespace winrt::Windows::Graphics::Imaging;
+
 #endif
 
 // RAII wrapper for COM initialization
@@ -43,7 +46,7 @@ class ComInitializer
 public:
 	ComInitializer()
 	{
-		m_hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+		m_hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	}
 	~ComInitializer()
 	{
@@ -402,7 +405,7 @@ static ClipData GetHistoryItemWinRT(int index, FormatType fmt, bool raw)
 
 		std::vector<FormatType> prio = (fmt != FMT_AUTO)
 			? std::vector<FormatType>{fmt}
-		: std::vector<FormatType>{ FMT_TEXT, FMT_HTML, FMT_RTF };
+		: std::vector<FormatType>{ FMT_TEXT, FMT_HTML, FMT_RTF, FMT_PNG };
 
 		for (FormatType f : prio)
 		{
@@ -440,6 +443,25 @@ static ClipData GetHistoryItemWinRT(int index, FormatType fmt, bool raw)
 				std::string utf8 = HStringToUtf8(rtf);
 				result.bytes.assign(utf8.begin(), utf8.end());
 				result.fmt = FMT_RTF;
+				break;
+			}
+			else if (f == FMT_PNG && dataView.Contains(StandardDataFormats::Bitmap()))
+			{
+				auto streamReference = dataView.GetBitmapAsync().get();
+				auto inputStream = streamReference.OpenReadAsync().get();
+				auto decoder = BitmapDecoder::CreateAsync(inputStream).get();
+				auto bitmap = decoder.GetSoftwareBitmapAsync().get();
+				auto outputStream = InMemoryRandomAccessStream();
+				auto encoder = BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), outputStream).get();
+				encoder.SetSoftwareBitmap(bitmap);
+				encoder.FlushAsync().get();
+				uint64_t size = outputStream.Size();
+				outputStream.Seek(0);
+				DataReader reader(outputStream.GetInputStreamAt(0));
+				reader.LoadAsync((uint32_t)size).get();
+				result.bytes.resize((size_t)size);
+				reader.ReadBytes(result.bytes);
+				result.fmt = FMT_PNG;
 				break;
 			}
 		}
@@ -822,7 +844,7 @@ static ParseResult ParseArguments(int argc, char* argv[], Options& opts)
 		}
 	}
 
-	return { -1, nullptr }; // Continue processing
+	return { -1, "" }; // Continue processing
 }
 
 int main(int argc, char* argv[])
@@ -831,6 +853,7 @@ int main(int argc, char* argv[])
 	SetConsoleCP(CP_UTF8);
 
 	ComInitializer comInit;
+
 	RegisterFormats();
 
 	Options opts;

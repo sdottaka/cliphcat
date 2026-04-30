@@ -10,7 +10,6 @@ set path="%ProgramFiles%\7-zip";"%ProgramFiles(x86)%\7-zip";%path%
 if "%1" == "" (
   call :BuildZip x86
   call :BuildZip x64
-  call :BuildZip ARM
   call :BuildZip ARM64
 ) else (
   call :BuildZip %1 
