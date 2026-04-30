@@ -748,11 +748,17 @@ static int ResolveIndex(const std::string& s)
 
 static ClipData GetClipboardByIndex(int index, FormatType fmt, bool raw)
 {
-	if (index == 1)
-		return GetCurrentClipboard(fmt, raw);
 #if CLIPBOARD_HISTORY_SUPPORT
+	if (index == 1)
+	{
+		ClipData data = GetCurrentClipboard(fmt, raw);
+		if (!data.bytes.empty())
+			return data;
+	}
 	return GetHistoryItemWinRT(index, fmt, raw);
 #else
+	if (index == 1)
+		return GetCurrentClipboard(fmt, raw);
 	err("Clipboard history not supported in this build.");
 	exit(EXIT_HISTORY_NOT_SUPPORTED);
 #endif
