@@ -169,6 +169,23 @@ static std::vector<uint8_t> ExtractHtmlFragment(const char* buf, size_t bufLen, 
 	return std::vector<uint8_t>(buf + startFrag, buf + endFrag);
 }
 
+static bool HasDefinedAlpha(const BITMAPINFO* pBmi)
+{
+	if (pBmi->bmiHeader.biSize < sizeof(BITMAPV5HEADER))
+		return false;
+
+	auto* pV5 = (const BITMAPV5HEADER*)pBmi;
+
+	if (pBmi->bmiHeader.biBitCount != 32)
+		return false;
+
+	if (pV5->bV5Compression != BI_BITFIELDS &&
+		pV5->bV5Compression != BI_RGB)
+		return false;
+
+	return pV5->bV5AlphaMask != 0;
+}
+
 static std::vector<uint8_t> DibToPng(HGLOBAL hDib)
 {
 	BITMAPINFO* pBmi = (BITMAPINFO*)GlobalLock(hDib);
@@ -179,10 +196,13 @@ static std::vector<uint8_t> DibToPng(HGLOBAL hDib)
 		clrEntries = pBmi->bmiHeader.biClrUsed ? pBmi->bmiHeader.biClrUsed
 		: (1 << pBmi->bmiHeader.biBitCount);
 	const BYTE* pBits = (const BYTE*)pBmi + pBmi->bmiHeader.biSize + clrEntries * sizeof(RGBQUAD);
+	bool hasAlpha = HasDefinedAlpha(pBmi);
 	std::vector<uint8_t> result;
 	IWICImagingFactory* pFac = nullptr;
-	if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
-		IID_IWICImagingFactory, (void**)&pFac)) && pFac)
+	HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory2, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&pFac);
+	if (FAILED(hr) || !pFac)
+		hr = CoCreateInstance(CLSID_WICImagingFactory1, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&pFac);
+	if (SUCCEEDED(hr) && pFac)
 	{
 		HDC hdc = GetDC(nullptr);
 		HBITMAP hBmp = CreateDIBitmap(hdc, &pBmi->bmiHeader, CBM_INIT, pBits, pBmi, DIB_RGB_COLORS);
@@ -190,7 +210,7 @@ static std::vector<uint8_t> DibToPng(HGLOBAL hDib)
 		IWICBitmap* pBm = nullptr;
 		if (hBmp)
 		{
-			pFac->CreateBitmapFromHBITMAP(hBmp, nullptr, WICBitmapUseAlpha, &pBm);
+			pFac->CreateBitmapFromHBITMAP(hBmp, nullptr, hasAlpha ? WICBitmapUseAlpha : WICBitmapIgnoreAlpha, &pBm);
 			DeleteObject(hBmp);
 		}
 		if (pBm)
