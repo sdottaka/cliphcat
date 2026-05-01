@@ -1,7 +1,7 @@
 pushd "%~dp0"
 
 setlocal
-set SAFEAPPVER=0.2.0
+set SAFEAPPVER=0.3.0
   )
 )
 set DISTDIR=.\Build\Releases
